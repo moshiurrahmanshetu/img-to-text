@@ -151,12 +151,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     systemStatus.className = 'status-pill active';
     systemStatusText.textContent = 'Processing';
-    statusMessage.innerHTML = '<span class="spinner-border spinner-border-sm text-primary me-1" role="status"></span> Extracting text with PaddleOCR...';
+    const selectedLangText = ocrLangSelect?.options[ocrLangSelect.selectedIndex]?.text || 'Auto Detect';
+    statusMessage.innerHTML = `<span class="spinner-border spinner-border-sm text-primary me-1" role="status"></span> Extracting text (${selectedLangText})...`;
 
     // Build form data payload
     const formData = new FormData();
     formData.append('file', currentFile);
-    formData.append('lang', ocrLangSelect.value || 'en');
+    formData.append('lang', ocrLangSelect ? ocrLangSelect.value : 'auto');
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/ocr`, {
@@ -225,6 +226,9 @@ document.addEventListener('DOMContentLoaded', () => {
     isProcessing = false;
     fileInput.value = '';
     imagePreview.src = '';
+    if (ocrLangSelect) {
+      ocrLangSelect.value = 'auto';
+    }
 
     // Reset UI Views
     dropzone.classList.remove('d-none');
