@@ -1,8 +1,6 @@
-# Image to Text (Phase 1)
+# Image to Text (Phase 2 - OCR Engine Integration)
 
-A lightweight and simple Image-to-Text OCR web application built with a responsive Bootstrap 5 frontend and a FastAPI backend.
-
-> **Note:** This is **Phase 1** of the project. It establishes the project architecture, frontend user interface (image upload, drag & drop, clipboard paste, image preview, copy to clipboard, and reset), and a minimal FastAPI backend. OCR engine integration will be added in Phase 2.
+A lightweight, simple, and responsive Image-to-Text OCR web application with a Bootstrap 5 frontend and a FastAPI backend powered by PaddleOCR.
 
 ---
 
@@ -11,83 +9,71 @@ A lightweight and simple Image-to-Text OCR web application built with a responsi
 ```text
 img-to-text/
 ├── frontend/
-│   ├── index.html        # Main HTML5 single-page interface
+│   ├── index.html        # Main single-page UI with upload, preview, and OCR conversion
 │   ├── css/
-│   │   └── style.css     # Clean, modern custom stylesheet
+│   │   └── style.css     # Clean, modern stylesheet
 │   └── js/
-│       └── app.js        # Vanilla JavaScript handling UI interactions
+│       └── app.js        # Vanilla JS handling drag-and-drop, paste, preview, and OCR API calls
 ├── backend/
-│   ├── main.py           # Minimal FastAPI application & health endpoint
+│   ├── main.py           # FastAPI server with PaddleOCR integration (/api/ocr)
 │   └── requirements.txt  # Python dependencies
 └── README.md             # Project documentation and setup guide
 ```
 
 ---
 
-## 🚀 Features (Phase 1)
+## 🚀 Features (Phase 2)
 
-* **Clean & Modern UI:** Simple, lightweight single-page layout built with HTML5, CSS3, and Bootstrap 5.
-* **Responsive Design:** Side-by-side two-column view on desktop, stacking seamlessly on tablets and mobile devices.
-* **Flexible Image Upload:**
-  * **Click to Browse:** Select an image via system file dialog.
+* **Full OCR Pipeline Integration:** Seamless end-to-end extraction from uploaded image to editable text.
+* **PaddleOCR Engine:** Fast, state-of-the-art text detection and recognition (PP-OCRv4).
+* **Multiple Upload Methods:**
+  * **Click to Browse:** Select an image via system file picker.
   * **Drag & Drop:** Drag an image directly into the dropzone.
-  * **Clipboard Paste (<kbd>Ctrl</kbd> + <kbd>V</kbd>):** Paste any image directly from the clipboard.
-* **Instant Image Preview:** High-resolution preview with filename and size metadata display.
-* **Editable Extracted Text Area:** Large textarea ready to receive extracted text in Phase 2, with real-time character counter.
-* **Clipboard Copy:** Quick one-click "Copy Text" button with instant visual feedback.
-* **Start Again:** One-click reset to restore the initial clean state.
-* **FastAPI Backend:** Minimal, extensible FastAPI application with CORS enabled and `/api/health` status check.
+  * **Clipboard Paste (<kbd>Ctrl</kbd> + <kbd>V</kbd>):** Paste images directly from the clipboard.
+* **Instant Image Preview:** High-resolution preview with filename and size metadata.
+* **Convert to Text Action:** One-click conversion button with real-time loading spinner and duplicate prevention.
+* **Preserved Line Breaks:** Extracts multiline text with proper spacing and newline preservation.
+* **Editable Extracted Text:** Large editable textarea with real-time character and line counters.
+* **One-Click Copy:** Copies extracted text to the system clipboard with visual feedback.
+* **Start Again Reset:** Restores the entire interface to a clean initial state.
+* **Safe In-Memory Processing:** Images are processed in memory and never permanently stored on disk.
+* **CORS Enabled:** Seamless communication between frontend and backend during local development.
 
 ---
 
-## 🛠️ Local Setup & Run Instructions
+## 🛠️ Local Setup & Execution
 
-### 1. Backend Setup (FastAPI)
+### 1. Backend Setup (FastAPI & PaddleOCR)
 
 1. Open your terminal and navigate to the project directory:
    ```bash
    cd "g:\Python Project\img-to-text"
    ```
 
-2. (Optional but recommended) Create and activate a Python virtual environment:
-   ```bash
-   python -m venv venv
-   # On Windows:
-   .\venv\Scripts\activate
-   ```
-
-3. Install required dependencies:
+2. Install dependencies:
    ```bash
    pip install -r backend/requirements.txt
    ```
 
-4. Start the FastAPI development server:
+3. Start the FastAPI backend server:
    ```bash
    uvicorn backend.main:app --reload --port 8000
    ```
 
-5. Check API health:
-   * Open your browser or run: [http://localhost:8000/api/health](http://localhost:8000/api/health)
-   * Expected response:
-     ```json
-     {
-       "status": "ok",
-       "message": "Image to Text API is healthy and running",
-       "phase": 1
-     }
-     ```
-   * Interactive API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+4. Verify backend health:
+   * **Health check URL:** [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)
+   * **Interactive API documentation:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 
 ---
 
-### 2. Frontend Setup
+### 2. Frontend Execution
 
-The frontend is completely static and lightweight. You can run it in any of the following ways:
+You can run the frontend in either of the following ways:
 
 * **Option A (Direct in Browser):**
-  Simply double-click or open `frontend/index.html` in your favorite web browser.
+  Open `frontend/index.html` directly in any web browser.
 
-* **Option B (Python Built-in HTTP Server):**
+* **Option B (Python Local Web Server):**
   From the project directory, run:
   ```bash
   python -m http.server 3000 --directory frontend
@@ -95,9 +81,39 @@ The frontend is completely static and lightweight. You can run it in any of the 
   Then visit [http://localhost:3000](http://localhost:3000).
 
 ---
+PS G:\Python Project\img-to-text\backend> python -m uvicorn main:app --host 127.0.0.1 --port 8000
 
-## 🔮 Roadmap (Phase 2)
+## 📡 API Reference
 
-* Integrate **PaddleOCR** into `backend/main.py`.
-* Connect frontend to backend via `POST /api/extract-text`.
-* Add progress/loading states during OCR inference.
+### `GET /api/health`
+Returns backend operational status, active OCR version, and supported languages.
+
+### `POST /api/ocr`
+Processes an uploaded image file and returns detected text lines.
+
+**Request:**
+* `file`: Image file (multipart/form-data)
+* `lang`: (Optional) Language code (`en`, `latin`, `devanagari`, `ch`, `japan`, `korean`, `arabic`, etc.)
+
+**Response Example:**
+```json
+{
+  "success": true,
+  "filename": "sample.png",
+  "language": "en",
+  "total_lines": 2,
+  "text": "Hello OCR World\nLine Two Extracted Text",
+  "lines": [
+    {
+      "text": "Hello OCR World",
+      "confidence": 0.9785,
+      "box": [[9.0, 15.0], [88.0, 15.0], [88.0, 27.0], [9.0, 27.0]]
+    },
+    {
+      "text": "Line Two Extracted Text",
+      "confidence": 0.9899,
+      "box": [[9.0, 46.0], [121.0, 46.0], [121.0, 58.0], [9.0, 58.0]]
+    }
+  ]
+}
+```

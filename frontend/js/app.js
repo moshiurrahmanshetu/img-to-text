@@ -1,10 +1,14 @@
 /**
- * Image to Text OCR Web Application - Frontend Logic (Phase 1)
- * Handles file upload, drag-and-drop, clipboard paste, image preview, copy, and reset.
+ * Image to Text OCR Web Application - Frontend Logic (Phase 2)
+ * Handles file upload, drag-and-drop, clipboard paste, image preview,
+ * OCR execution via FastAPI backend, copy, and reset.
  */
 
+// Configurable API base URL (defaults to local FastAPI backend)
+const API_BASE_URL = 'http://127.0.0.1:8000';
+
 document.addEventListener('DOMContentLoaded', () => {
-  // DOM Elements
+  // DOM Elements - Left Panel (Source Image)
   const dropzone = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
   const previewContainer = document.getElementById('previewContainer');
@@ -15,24 +19,34 @@ document.addEventListener('DOMContentLoaded', () => {
   const imageBadge = document.getElementById('imageBadge');
   const changeImageBtn = document.getElementById('changeImageBtn');
   const statusMessage = document.getElementById('statusMessage');
+  const convertBtn = document.getElementById('convertBtn');
+  const convertBtnText = document.getElementById('convertBtnText');
+  const convertIcon = document.getElementById('convertIcon');
+  const convertSpinner = document.getElementById('convertSpinner');
+  const ocrLangSelect = document.getElementById('ocrLangSelect');
+
+  // Header System Status
   const systemStatus = document.getElementById('systemStatus');
   const systemStatusText = document.getElementById('systemStatusText');
-  
+
+  // DOM Elements - Right Panel (Extracted Text)
   const extractedTextArea = document.getElementById('extractedTextArea');
   const charCountBadge = document.getElementById('charCount');
+  const lineCountBadge = document.getElementById('lineCount');
   const copyBtn = document.getElementById('copyBtn');
   const copyBtnText = document.getElementById('copyBtnText');
   const copyIcon = document.getElementById('copyIcon');
   const resetBtn = document.getElementById('resetBtn');
 
-  // Bootstrap Toast instance
+  // Bootstrap Toast Instance
   const toastElement = document.getElementById('liveToast');
   const toastText = document.getElementById('toastText');
   const toastIcon = document.getElementById('toastIcon');
-  const bsToast = new bootstrap.Toast(toastElement, { delay: 3000 });
+  const bsToast = new bootstrap.Toast(toastElement, { delay: 3500 });
 
-  // Current state
+  // State
   let currentFile = null;
+  let isProcessing = false;
 
   /**
    * Display toast notification
@@ -41,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
    */
   function showToast(message, type = 'success') {
     toastText.textContent = message;
-    
+
     // Reset icon classes
     toastIcon.className = 'bi me-1 ';
     if (type === 'success') {
@@ -57,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /**
    * Format file size in human-readable units
-   * @param {number} bytes 
+   * @param {number} bytes
    * @returns {string}
    */
   function formatBytes(bytes) {
@@ -70,7 +84,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /**
    * Process and validate a selected or pasted file
-   * @param {File} file 
+   * @param {File} file
    */
   function handleImageFile(file) {
     if (!file) return;
@@ -86,24 +100,27 @@ document.addEventListener('DOMContentLoaded', () => {
     const reader = new FileReader();
     reader.onload = (e) => {
       imagePreview.src = e.target.result;
-      
+
       // Update UI Views
       dropzone.classList.add('d-none');
       previewContainer.classList.add('active');
       fileInfoBar.classList.add('active');
       changeImageBtn.classList.remove('d-none');
 
+      // Enable Convert Button
+      convertBtn.disabled = false;
+
       // Update Metadata
       fileNameDisplay.innerHTML = `<i class="bi bi-file-image me-1"></i> ${file.name || 'Pasted Image'}`;
       fileSizeDisplay.textContent = formatBytes(file.size);
-      imageBadge.textContent = 'Image Loaded';
+      imageBadge.textContent = 'Image Ready';
       imageBadge.className = 'badge bg-primary-subtle text-primary border border-primary-subtle fw-normal';
 
-      statusMessage.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i> Image loaded (Ready for OCR in Phase 2)';
-      systemStatus.className = 'status-pill active';
-      systemStatusText.textContent = 'Image Ready';
+      statusMessage.innerHTML = '<i class="bi bi-check-circle text-success me-1"></i> Image ready for conversion';
+      systemStatus.className = 'status-pill ready';
+      systemStatusText.textContent = 'Ready';
 
-      showToast('Image loaded successfully');
+      showToast('Image loaded. Click "Convert to Text" to process.');
     };
 
     reader.onerror = () => {
@@ -114,18 +131,112 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
+   * Send the selected image to the FastAPI OCR backend
+   */
+  async function performOCR() {
+    if (!currentFile) {
+      showToast('Please select or paste an image first.', 'warning');
+      return;
+    }
+
+    if (isProcessing) return;
+
+    isProcessing = true;
+
+    // UI Loading State
+    convertBtn.disabled = true;
+    convertIcon.classList.add('d-none');
+    convertSpinner.classList.remove('d-none');
+    convertBtnText.textContent = 'Extracting...';
+
+    systemStatus.className = 'status-pill active';
+    systemStatusText.textContent = 'Processing';
+    statusMessage.innerHTML = '<span class="spinner-border spinner-border-sm text-primary me-1" role="status"></span> Extracting text with PaddleOCR...';
+
+    // Build form data payload
+    const formData = new FormData();
+    formData.append('file', currentFile);
+    formData.append('lang', ocrLangSelect.value || 'en');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/ocr`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errorMsg = `Server error (${response.status})`;
+        try {
+          const errData = await response.json();
+          if (errData && errData.detail) {
+            errorMsg = errData.detail;
+          }
+        } catch (_) {}
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        extractedTextArea.value = result.text || '';
+        updateCharCount();
+
+        if (!result.text || !result.text.trim()) {
+          statusMessage.innerHTML = '<i class="bi bi-exclamation-circle text-warning me-1"></i> No text detected in image';
+          systemStatus.className = 'status-pill ready';
+          systemStatusText.textContent = 'Completed';
+          showToast('OCR completed, but no text was detected in the image.', 'warning');
+        } else {
+          statusMessage.innerHTML = `<i class="bi bi-check2-circle text-success me-1"></i> Extracted ${result.total_lines} line(s) successfully`;
+          systemStatus.className = 'status-pill ready';
+          systemStatusText.textContent = 'Completed';
+          showToast(`Extracted ${result.total_lines} text line(s) successfully!`);
+        }
+      } else {
+        throw new Error(result.error || 'Failed to extract text from image');
+      }
+
+    } catch (error) {
+      console.error('OCR Error:', error);
+      let message = error.message || 'Error communicating with OCR backend';
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        message = `Could not connect to backend server at ${API_BASE_URL}. Ensure FastAPI is running on port 8000.`;
+      }
+
+      statusMessage.innerHTML = '<i class="bi bi-exclamation-triangle text-danger me-1"></i> OCR failed. You can try again.';
+      systemStatus.className = 'status-pill';
+      systemStatusText.textContent = 'Error';
+      showToast(message, 'danger');
+
+    } finally {
+      isProcessing = false;
+      convertBtn.disabled = !currentFile;
+      convertIcon.classList.remove('d-none');
+      convertSpinner.classList.add('d-none');
+      convertBtnText.textContent = 'Convert to Text';
+    }
+  }
+
+  /**
    * Reset all elements to their initial state
    */
   function resetAll() {
     currentFile = null;
+    isProcessing = false;
     fileInput.value = '';
     imagePreview.src = '';
 
-    // Reset UI View Visibility
+    // Reset UI Views
     dropzone.classList.remove('d-none');
     previewContainer.classList.remove('active');
     fileInfoBar.classList.remove('active');
     changeImageBtn.classList.add('d-none');
+
+    // Disable Convert Button
+    convertBtn.disabled = true;
+    convertIcon.classList.remove('d-none');
+    convertSpinner.classList.add('d-none');
+    convertBtnText.textContent = 'Convert to Text';
 
     // Reset Labels & Badges
     imageBadge.textContent = 'No image selected';
@@ -134,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
     systemStatus.className = 'status-pill ready';
     systemStatusText.textContent = 'Ready';
 
-    // Clear Textarea and Character Count
+    // Clear Textarea and Counts
     extractedTextArea.value = '';
     updateCharCount();
 
@@ -142,15 +253,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   /**
-   * Update character count for textarea
+   * Update character and line counts for textarea
    */
   function updateCharCount() {
-    const length = extractedTextArea.value.length;
+    const text = extractedTextArea.value;
+    const length = text.length;
     charCountBadge.textContent = `${length} character${length === 1 ? '' : 's'}`;
+
+    if (length > 0) {
+      const lines = text.split('\n').length;
+      lineCountBadge.textContent = `${lines} line${lines === 1 ? '' : 's'}`;
+      lineCountBadge.classList.remove('d-none');
+    } else {
+      lineCountBadge.classList.add('d-none');
+    }
   }
 
   /**
-   * Copy textarea content to user's clipboard
+   * Copy textarea content to clipboard
    */
   async function copyTextToClipboard() {
     const text = extractedTextArea.value;
@@ -163,7 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
       } else {
-        // Fallback for older browsers / insecure context
+        // Fallback for older browsers / non-https contexts
         extractedTextArea.select();
         document.execCommand('copy');
       }
@@ -209,7 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 2. Drag & Drop events on dropzone
+  // 2. Drag & Drop events
   ['dragenter', 'dragover'].forEach(eventName => {
     dropzone.addEventListener(eventName, (e) => {
       e.preventDefault();
@@ -233,13 +353,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Prevent default window drag/drop behavior (prevents opening file in new tab)
+  // Prevent default window drag/drop behavior
   window.addEventListener('dragover', (e) => e.preventDefault(), false);
   window.addEventListener('drop', (e) => e.preventDefault(), false);
 
   // 3. Clipboard Image Paste (Ctrl + V)
   document.addEventListener('paste', (e) => {
-    // If active element is textarea and user pasted plain text, let it happen naturally
     const isTextareaFocused = document.activeElement === extractedTextArea;
     const clipboardItems = (e.clipboardData || window.clipboardData).items;
 
@@ -259,10 +378,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (!foundImage && !isTextareaFocused && clipboardItems && clipboardItems.length > 0) {
-      // Pasted non-image content when not inside textarea
       const firstItem = clipboardItems[0];
       if (firstItem.kind === 'string' && firstItem.type.indexOf('text/plain') !== -1) {
-        // Optional subtle guidance
+        // Normal string paste outside inputs
       }
     }
   });
@@ -271,9 +389,10 @@ document.addEventListener('DOMContentLoaded', () => {
   extractedTextArea.addEventListener('input', updateCharCount);
 
   // 5. Button Actions
+  convertBtn.addEventListener('click', performOCR);
   copyBtn.addEventListener('click', copyTextToClipboard);
   resetBtn.addEventListener('click', resetAll);
 
-  // Initial count update
+  // Initial count setup
   updateCharCount();
 });
